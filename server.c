@@ -22,11 +22,11 @@ typedef struct {
   char *ext;
 } extn;
 
-struct arguments {
+typedef struct {
   char *webroot;
   int newsockfd;
   pthread_t self;
-};
+} arguments;
 
 extn extensions[] = {
   {"text/html", "html"},
@@ -48,8 +48,13 @@ int get_file_size(int fd) {
   return (int)stat_struct.st_size;
 }
 
-void send_msg(int fd, char *msg) {
-  write(fd, msg, strlen(msg));
+void send_msg(int fd, char *msg, int isJPEG) {
+  if (!isJPEG) {
+    write(fd, msg, strlen(msg));
+  }
+  else {
+    write(fd, msg, isJPEG);
+  }
 }
 
 int receive_new(int fd, char *buffer) {
@@ -74,7 +79,8 @@ int receive_new(int fd, char *buffer) {
 void *connection(void *params) {
   char request[500], resource[500], *ptr;
   int file;
-  struct arguments *args = params;
+  int isJPEG = 0;
+  arguments *args = params;
   int fd = args->newsockfd;
   char *webroot = args->webroot;
   char buffer[MAX_BUFFER_SIZE];
@@ -107,19 +113,19 @@ void *connection(void *params) {
         file = open(resource, O_RDONLY);
         printf("Opening %s\n", resource);
         if (file == -1) {
-          send_msg(fd, "HTTP/1.1 404\r\n\r\n");
+          send_msg(fd, "HTTP/1.1 404\r\n\r\n", isJPEG);
         }
         else {
-          send_msg(fd, "HTTP/1.1 200 OK\r\n");
-          send_msg(fd, "Content-Type: ");
-          send_msg(fd, extensions[i].type);
-          send_msg(fd, "\r\n\r\n");
+          send_msg(fd, "HTTP/1.1 200 OK\r\n", isJPEG);
+          send_msg(fd, "Content-Type: ", isJPEG);
+          send_msg(fd, extensions[i].type, isJPEG);
+          send_msg(fd, "\r\n\r\n", isJPEG);
           if (strcmp(extensions[i].ext, "jpg") == 0){
             FILE *f = fopen(resource, "rb");
             fseek(f, 0, SEEK_END);
             int file_len = ftell(f);
             fseek(f, 0, SEEK_SET);
-            while (fread(buffer, file_len, 1, f));
+            isJPEG = fread(buffer, 1, file_len, f);
             fclose(f);
           }
           else {
@@ -128,7 +134,7 @@ void *connection(void *params) {
         }
       }
     }
-    send_msg(fd, buffer);
+    send_msg(fd, buffer, isJPEG);
   }
   shutdown(fd, SHUT_RDWR);
   return NULL;
@@ -182,7 +188,7 @@ int main(int argc, char **argv) {
 	/* Accept a connection - block until a connection is ready to
 	 be accepted. Get back a new file descriptor to communicate on. */
   char *webroot = argv[2];
-  struct arguments args;
+  arguments args;
   printf("Accepting\n");
   while ((newsockfd = accept(sockfd, (struct sockaddr *) &cli_addr, &clilen))) {
     args.webroot = webroot;
